@@ -1,0 +1,106 @@
+---
+title: "R Functions"
+author: "Andy Hsu"
+format: pdf
+---
+
+# All About Functions in R
+
+Functions are the way we get stuff done in R. We call a function to read data, compute, plot, and do just about anything in R.
+
+R makes writing our own function accessible, but it is important to understand the fundamentals and write a functioning snippet of code before diving into function creation.
+
+#### Starting With a Snippet
+
+To start, we will grade a class of student assignments. The first exercise will be with a small sample of 3 students.
+
+```{r}
+# Example input vectors to start with
+student1 <- c(100, 100, 100, 100, 100, 100, 100, 90)
+student2 <- c(100, NA, 90, 90, 90, 90, 97, 80)
+student3 <- c(90, NA, NA, NA, NA, NA, NA, NA)
+```
+
+To properly calculate the grade, we want to drop the students' lowest scores and calculate the average score afterward. We can do that with the following code.
+
+```{r}
+mean(student1[-which.min(student1)])
+```
+
+To deal with Na values, we can use the argument `trim=` to check for Na values and set them to 0.
+
+```{r}
+noNaTemp <- student2
+noNaTemp[is.na(noNaTemp)] <- 0
+```
+
+Putting it all together, the final snippet of code is as follows. Note that the filtering of Na values needs to occur before dropping the lowest score.
+
+```{r}
+noNaTemp <- student3
+noNaTemp[is.na(noNaTemp)] <- 0
+mean(noNaTemp[-which.min(noNaTemp)])
+```
+
+#### Creating a Function
+
+To package this into a function with its proper arguments, we can use `function(x)`, where x is the argument.
+
+```{r}
+grade <- function(x) {
+  # Set NA values to 0
+  x[is.na(x)] <- 0
+  # Drop the lowest score and take the mean
+  mean(x[-which.min(x)])
+}
+```
+
+Now, when we call the function with the argument of a scoreset that we want graded, R returns us the proper grade.
+
+```{r}
+grade(student1)
+grade(student2)
+grade(student3)
+```
+
+#### Using the `apply()` Function
+
+Now, we want to use this function to grade multiple students at once. We first obtain the data frame of scores.
+
+```{r}
+gradebook <- read.csv("https://tinyurl.com/gradeinput",row.names=1)
+gradebook
+```
+
+To allow the function to read multiple students at once from a data frame, we use the `apply()` function. The arguments for this function are: `X`, which specifies a dataset, `MARGIN`, which specifies how the function should be applied (i.e. by row, by column), and `FUN`, which specifies which function to be applied.
+
+```{r}
+apply(gradebook,1,grade)
+```
+
+To find the highest scoring student in the class, we can take the `which.max()` of the result.
+
+```{r}
+which.max(apply(gradebook,1,grade))
+```
+
+Looking at averages across each assignment, we can see that the hardest assignment appears to be HW2.
+
+```{r}
+y <- gradebook
+y[is.na(y)] <- 0
+apply(y,2,mean)
+```
+
+To find which assignment was best correlated with score, we can call the `cor()` function within an `apply()`.
+
+```{r}
+grades <- apply(gradebook,1,grade)
+y <- gradebook
+y[is.na(y)] <- 0
+apply(y,2,cor,grades)
+```
+
+Reading the highest correlation coefficient, we find that HW5 was the most indicative of a student's score.
+
+And those were some of the basics of writing your own functions in R!

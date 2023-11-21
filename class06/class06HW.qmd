@@ -1,0 +1,55 @@
+---
+title: "Generalizing Functions in R"
+author: "Andy Hsu"
+format: pdf
+---
+
+## More Function Practice
+
+Taking this code, a function can be written to apply to any protein structure.
+
+```{r}
+library(bio3d)
+s1 <- read.pdb("4AKE")
+s2 <- read.pdb("1AKE")
+s3 <- read.pdb("1E4Y")
+
+s1.chainA <- trim.pdb(s1, chain="A", elety="CA")
+s2.chainA <- trim.pdb(s2, chain="A", elety="CA")
+s3.chainA <- trim.pdb(s1, chain="A", elety="CA")
+
+s1.b <- s1.chainA$atom$b
+s2.b <- s2.chainA$atom$b
+s3.b <- s3.chainA$atom$b
+
+plotb3(s1.b, sse=s1.chainA, typ="l", ylab="Bfactor")
+plotb3(s2.b, sse=s2.chainA, typ="l", ylab="Bfactor")
+plotb3(s3.b, sse=s3.chainA, typ="l", ylab="Bfactor")
+```
+
+First, we condense this code down to the snippet for 1 input.
+
+```{r}
+library(bio3d)
+s1 <- read.pdb("4AKE")
+s1.chainA <- trim.pdb(s1, chain="A", elety="CA")
+s1.b <- s1.chainA$atom$b
+plotb3(s1.b, sse=s1.chainA, typ="l", ylab="Bfactor")
+```
+
+Then, we map this to a function, using more general variables.
+
+```{r}
+BfacPlot <- function(x) {
+  y <- read.pdb(x)
+  z <- trim.pdb(y,chain="A",elety="CA")
+  w <- z$atom$b
+  plotb3(w,sse=z,typ="l",ylab="Bfactor")
+}
+```
+
+To use this function, simply enter `BfacPlot(x)`, with x substituted to any 4-character PDB ID. The function will return a line plot of Bfactor per residue.
+
+```{r}
+BfacPlot("1E4Y")
+```

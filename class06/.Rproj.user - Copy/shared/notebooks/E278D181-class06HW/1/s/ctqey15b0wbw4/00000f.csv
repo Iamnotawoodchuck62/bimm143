@@ -1,0 +1,6 @@
+"0","BfacPlot <- function(x) {"
+"0","  y <- read.pdb(x)"
+"0","  z <- trim.pdb(y,chain=""A"",elety=""CA"")"
+"0","  w <- z$atom$b"
+"0","  plotb3(w,sse=z,typ=""l"",ylab=""Bfactor"")"
+"0","}"

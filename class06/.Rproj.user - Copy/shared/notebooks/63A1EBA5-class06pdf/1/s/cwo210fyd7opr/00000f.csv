@@ -1,0 +1,2 @@
+"0","noNaTemp <- student2"
+"0","noNaTemp[is.na(noNaTemp)] <- 0"
