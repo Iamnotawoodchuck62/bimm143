@@ -1,0 +1,233 @@
+---
+title: "Analysis of RNA-Seq Data"
+author: "Andy Hsu"
+format: pdf
+---
+
+## Setup
+
+Today, we will analyze data from an experiment where airway smooth muscle cells were treated with a drug called dexamethasone or dex.
+
+Once we have the DESeq2 package installed from BiocManager, we can import the csv files and take a look at the files.
+
+```{r}
+counts <- read.csv("airway_scaledcounts.csv",row.names=1)
+metadata <- read.csv("airway_metadata.csv")
+nrow(counts)
+sum(metadata$dex=="control")
+```
+
+We can see here that there are 38694 genes in the dataset and 4 control cell lines.
+
+## Toy differential gene expression
+
+Now, to separate the treated set from the control set, we can use the following code.
+
+```{r}
+control <- metadata[metadata[,"dex"]=="control",]
+control.counts <- counts[ ,control$id]
+control.mean <- rowMeans( control.counts )
+
+treated <- metadata[metadata[,"dex"]=="treated",]
+treated.counts <- counts[ ,treated$id]
+treated.mean <- rowMeans( treated.counts )
+
+meancounts <- data.frame(control.mean, treated.mean)
+```
+
+Note that to take means, the `rowMeans()` function will be more robust and appropriate.
+
+Next, we can graph a scatterplot of control means vs treated means.
+
+```{r}
+library(ggplot2)
+
+ggplot(meancounts,aes(control.mean,treated.mean)) + geom_point(alpha=0.4)
+```
+
+It appears that most data points are clumped at the lower values, so let's convert to a logarithmic scale.
+
+```{r}
+ggplot(meancounts,aes(control.mean,treated.mean)) +
+  geom_point(alpha=0.4) +
+  scale_x_log10() + scale_y_log10()
+```
+
+To better view which genes show large differences in expression, we can calculate the log2foldchange and add it to our data frame with the following code.
+
+```{r}
+meancounts$log2fc <- log2(meancounts[,"treated.mean"]/meancounts[,"control.mean"])
+head(meancounts)
+```
+
+However, some non-numeric values are included in the results. We can remove these points by filtering out genes with an expression value of 0.
+
+```{r}
+nonzero.vals <- rowSums(meancounts[,1:2]==0) == 0
+nonzerocounts <- meancounts[nonzero.vals,]
+head(nonzerocounts)
+```
+
+Now, we can filter the genes with up or down-regulation above 2 or under -2.
+
+```{r}
+up.ind <- nonzerocounts$log2fc > 2
+down.ind <- nonzerocounts$log2fc < (-2)
+
+sum(up.ind)
+sum(down.ind)
+```
+
+We can see from the code that there are 250 upregulated genes and 367 downregulated genes. However, there is a much better method of determining upregulated and downregulated genes that is much more robust, relying on statistical significance, rather than arbitrary thresholds.
+
+## DESeq Analysis
+
+We will use the DESeq2 package to perform analysis on this data. First, let's create a DESeq2 data set so that DESeq2 can properly read our data.
+
+```{r}
+library(DESeq2)
+
+dds <- DESeqDataSetFromMatrix(countData=counts, 
+                              colData=metadata, 
+                              design=~dex)
+```
+
+Now we can run the DESeq analysis and take a look at the results.
+
+```{r}
+dds <- DESeq(dds)
+res <- results(dds)
+head(res)
+```
+
+## Volcano Plot
+
+Next, we can make a volcano plot to visualize our results. This type of plot shows thresholds for both the statistical side and the biological side. The x-axis will represent the log2fc, and the y-axis will represent the inverse log of p-value.
+
+```{r}
+plot(res$log2FoldChange,-log(res$padj),xlab="log2(FoldChange)",ylab="-log(p-value)")
+```
+
+We can also add some lines to indicate our desired cutoffs for each axis value, i.e. log2fc above 2 or under -2, p-value under 0.05.
+
+```{r}
+plot(res$log2FoldChange,-log(res$padj),xlab="log2(FoldChange)",ylab="-log(p-value)")
+abline(v=c(-2,2), col="darkgray", lty=2)
+abline(h=-log(0.05), col="darkgray", lty=2)
+```
+
+To finish up the plot, let's color the data points based on where they fall along the lines. Blue points will represent the data that meets all of our criteria, red points will be those that meet the log2fc criterion but not p-value, and gray points will represent everything else.
+
+The graph will show that the genes we care the most about are in the top right and top left sections.
+
+```{r}
+mycols <- rep("gray", nrow(res))
+mycols[ abs(res$log2FoldChange) > 2 ]  <- "red" 
+inds <- (res$padj < 0.01) & (abs(res$log2FoldChange) > 2 )
+mycols[ inds ] <- "blue"
+plot(res$log2FoldChange,-log(res$padj),col=mycols,xlab="log2(FoldChange)",ylab="-log(p-value)")
+abline(v=c(-2,2), col="darkgray", lty=2)
+abline(h=-log(0.05), col="darkgray", lty=2)
+```
+
+Finally, let's save our results to a csv file.
+
+```{r}
+write.csv(res,file="deseq_analysis.csv")
+```
+
+## Adding Annotations
+
+The data we have only lists the data, without any indication of the exact gene in question. Let's load some packages to help with this problem.
+
+```{r}
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+```
+
+The main function we will use is `mapIds()`. The following code will add a new column to our results containing the gene symbols of each entry.
+
+```{r}
+res$symbol <- mapIds(org.Hs.eg.db,
+                     keys=row.names(res),
+                     keytype="ENSEMBL",
+                     column="SYMBOL",
+                     multiVals="first")
+```
+
+We can repeat this for the Entrez ID, UniProt ID, and Gene Name.
+
+```{r}
+res$entrez <- mapIds(org.Hs.eg.db,
+                     keys=row.names(res),
+                     keytype="ENSEMBL",
+                     column="ENTREZID",
+                     multiVals="first")
+
+res$uniprot <- mapIds(org.Hs.eg.db,
+                     keys=row.names(res),
+                     keytype="ENSEMBL",
+                     column="UNIPROT",
+                     multiVals="first")
+
+res$genename <- mapIds(org.Hs.eg.db,
+                     keys=row.names(res),
+                     keytype="ENSEMBL",
+                     column="GENENAME",
+                     multiVals="first")
+```
+
+We can also order the dataset by the padj.
+
+```{r}
+ord <- order( res$padj )
+head(res[ord,])
+```
+
+## Pathway Analysis
+
+Next, we can look at the cellular pathways connected to these genes and graph theeir upregulation, downregulation, or lack of change. We will first load a couple of packages then setup our KEGG datasets.
+
+```{r}
+#| message: false
+library(pathview)
+library(gage)
+library(gageData)
+```
+
+```{r}
+data(kegg.sets.hs)
+head(kegg.sets.hs, 2)
+```
+
+As input for the `gage()` function, we need a vector of fold change values labeled by Entrez IDs.
+
+```{r}
+foldchanges = res$log2FoldChange
+names(foldchanges) = res$entrez
+head(foldchanges)
+```
+
+At last, let's perform the gene enrichment.
+
+```{r}
+keggres = gage(foldchanges, gsets=kegg.sets.hs)
+```
+
+Let's take a quick look at our results.
+
+```{r}
+head(keggres$less, 3)
+```
+
+Interestingly, asthma is statistically the 3rd most downregulated pathway. Now that we have our results, let's visualize it with respect to the asthma pathway.
+
+```{r}
+pathview(gene.data=foldchanges, pathway.id="hsa05310")
+```
+
+This code downloads an image to our project file, which is displayed below.
+
+![](hsa05310.pathview.png)
+
+And that's all for the DESeq analysis of an RNA-Seq dataset.
