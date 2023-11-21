@@ -1,0 +1,203 @@
+---
+title: "Comparative Structure Analysis & Introduction to AlphaFold"
+author: "Andy Hsu"
+format: pdf
+---
+
+## Setup
+
+To begin with, we need to install some packages for this project. These include `bio3d`, `bio3d-view`, and `msa`. It's important to note that the `msa` package is managed by BioConductor, another package database with a focus on genomics work and adjacent fields. Similarly, the `bio3d-view` package is located on BitBucket, and can be accessed via the `devtools` package.
+
+## Search and Retrieve Structures
+
+Now, we can begin by accessing the sequence of our protein, Adenylate Kinase (AK).
+
+```{r}
+library(bio3d)
+
+aa <- get.seq("1ake_a")
+aa
+```
+
+Next, we run a BLAST search of our sequence to find the corresponding protein.
+
+```{r}
+b <- blast.pdb(aa)
+```
+
+If we plot our results, we can see a summary of our BLAST results by alignment statistics. We can also list the PDB IDs of some of the top results of our BLAST.
+
+```{r}
+hits <- plot(b)
+head(hits$pdb.id)
+```
+
+Before we move on, let's annotate these top results for protein name, organism, method used, etc.
+
+```{r}
+an <- pdb.annotate(hits$pdb.id)
+an
+```
+
+Finally for this step, we can fetch and store the structures of all these top results.
+
+```{r}
+files <- get.pdb(hits$pdb.id, path="pdbs", split=TRUE, gzip=TRUE)
+```
+
+## Align and Superimpose Structures
+
+Now, we can align our files using the `msa` package.
+
+```{r}
+pdbs <- pdbaln(files, fit = TRUE, exefile="msa")
+pdbs
+```
+
+## PCA
+
+Next, we will perform PCA on the alignment to find the relationships between the structures.
+
+```{r}
+pc.xray <- pca(pdbs)
+plot(pc.xray)
+```
+
+And that's it for this analysis of a couple of homologous structures.
+
+## Analysis of AlphaFold Predictions
+
+This next section will focus on analyzing structure predictions of a specific dimer found by AlphaFold. The results have already been loaded into the project folder. The following code will store the names of PDB files in the results as a vector.
+
+```{r}
+results_dir <- "HIVPrDi_23119.result/HIVPrDi_23119"
+pdb_files <- list.files(path=results_dir,
+                        pattern="*.pdb",
+                        full.names = TRUE)
+pdb_files
+```
+
+Next, we use Bio3D to align the sequences. We can view the resulting alignment to check that everything is in order.
+
+```{r}
+library(bio3d)
+pdbs <- pdbaln(pdb_files, fit=TRUE, exefile="msa")
+pdbs
+```
+
+We can also calculate the RMSD to find relative distance between the structures.
+
+```{r}
+rd <- rmsd(pdbs)
+range(rd)
+```
+
+Now, we can use the following code to plot a heat map of our values.
+
+```{r}
+library(pheatmap)
+
+colnames(rd) <- paste0("m",1:5)
+rownames(rd) <- paste0("m",1:5)
+pheatmap(rd)
+```
+
+A plot of pLDDT values across all models is also easily created.
+
+```{r}
+pdb <- read.pdb("1hsg")
+
+plotb3(pdbs$b, typ="l", lwd=2, sse=pdb)
+points(pdbs$b[2,], typ="l", col="red")
+points(pdbs$b[3,], typ="l", col="blue")
+points(pdbs$b[4,], typ="l", col="darkgreen")
+points(pdbs$b[5,], typ="l", col="orange")
+abline(v=100, col="gray")
+```
+
+To improve our superpositions, we can employ the `core.find()` function as follows.
+
+```{r}
+core <- core.find(pdbs)
+core.inds <- print(core, vol=0.5)
+xyz <- pdbfit(pdbs, core.inds, outpath="corefit_structures")
+```
+
+This code generates a collection of PDB files at a directory in the project folder with the improved superpositions, which can be viewed in Mol\*. Our updated RMSD heatmap is displayed below.
+
+```{r}
+rd <- rmsd(xyz)
+
+colnames(rd) <- paste0("m",1:5)
+rownames(rd) <- paste0("m",1:5)
+pheatmap(rd)
+```
+
+An RMSF plot can also be created to compare differences in the chains.
+
+```{r}
+rf <- rmsf(xyz)
+
+plotb3(rf, sse=pdb)
+abline(v=100, col="gray", ylab="RMSF")
+```
+
+## Visualizing Predicted Alignment Error
+
+AlphaFold also provides files documenting the Predicted Alignment Error, located in JSON files that we can access via the `jsonlite` package.
+
+```{r}
+library(jsonlite)
+
+pae_files <- list.files(path=results_dir,
+                        pattern=".*model.*\\.json",
+                        full.names = TRUE)
+pae1 <- read_json(pae_files[1],simplifyVector = TRUE)
+pae5 <- read_json(pae_files[5],simplifyVector = TRUE)
+```
+
+We can plot these PAE values using the Bio3D package.
+
+```{r}
+plot.dmat(pae1$pae, 
+          xlab="Residue Position (i)",
+          ylab="Residue Position (j)",
+          grid.col = "black",
+          zlim=c(0,30))
+```
+
+```{r}
+plot.dmat(pae5$pae, 
+          xlab="Residue Position (i)",
+          ylab="Residue Position (j)",
+          grid.col = "black",
+          zlim=c(0,30))
+```
+
+## Measuring Residue Conservation
+
+Another thing AlphaFold allows us to do is a measure of residue conservation, derived from the sequences stored in a .a3m file.
+
+```{r}
+aln_file <- list.files(path=results_dir,
+                       pattern=".a3m$",
+                        full.names = TRUE)
+aln <- read.fasta(aln_file[1], to.upper = TRUE)
+sim <- conserv(aln)
+```
+
+We can plot the resulting residue conservations to visualize them.
+
+```{r}
+plotb3(sim[1:99], sse=trim.pdb(pdb, chain="A"))
+```
+
+Finally, we can create a pdb file to view these results in Mol\*.
+
+```{r}
+m1.pdb <- read.pdb(pdb_files[1])
+occ <- vec2resno(c(sim[1:99], sim[1:99]), m1.pdb$atom$resno)
+write.pdb(m1.pdb, o=occ, file="m1_conserv.pdb")
+```
+
+And that's all for the structure prediction of a protein from the sequence using AlphaFold.
