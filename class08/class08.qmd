@@ -1,0 +1,192 @@
+---
+title: "Breast Cancer Mini Project"
+author: "Andy Hsu"
+format: pdf
+---
+
+# Analysis of a Cancer Dataset
+
+In this project, we will analyze a dataset of breast cancer biopsies from fine needle aspiration (FNA).
+
+#### Getting Started
+
+We will start this project by downloading the dataset, setting patient IDs to the row names.
+
+```{r}
+wisc.df <- read.csv("wisconsincancer.csv",row.names=1)
+head(wisc.df)
+```
+
+We will also separate the diagnosis, as it will not be used until later.
+
+```{r}
+wisc.data <- wisc.df[,-1]
+diagnosis <- wisc.df[,1]
+```
+
+Running commands to gain some basic information on the dataset, we find that there are 569 observations, 212 malignant diagnoses, and 10 variables suffixed with "_mean". Importantly, we can use the `grep()` function to match the `colnames()` to the pattern of `"_mean"`, then enter the function `length()` to count the total.
+
+```{r}
+dim(wisc.data)
+table(diagnosis)
+length(grep("_mean",(colnames(wisc.data))))
+```
+
+#### Performing PCA
+
+Before we can begin with PCA, we need to check that PCA can be applied to the dataset.
+
+```{r}
+colMeans(wisc.data)
+apply(wisc.data,2,sd)
+```
+
+Now, we can run a PCA using the `prcomp()` function.
+
+```{r}
+wisc.pr <- prcomp(wisc.data,scale=T)
+summary(wisc.pr)
+```
+
+Reading off the summary table, we can see that PC1 accounts for 44.3% of the original variance. Additionally, we need the first 3 PCs to reach 70% variance and 7 PCs to reach 90% variance.
+
+#### Interpreting PCA
+
+To take a look at our dataset, we can try to plot a biplot.
+
+```{r}
+biplot(wisc.pr)
+```
+
+This plot is impossible to read, though. The overlapping text makes it too hard to tell where any datapoint is. Perhaps this plot would be better off with points labeled as dots rather than text.
+
+```{r}
+plot(wisc.pr$x, col = (diagnosis=="M")+1, xlab = "PC1", ylab = "PC2")
+```
+
+To view this same plot with PC1 against PC3, we can modify the code. Notice that the distribution of the first plot shows a clearer separation between the 2 groups.
+
+```{r}
+plot(wisc.pr$x[,c(1,3)], col = (diagnosis=="M")+1, xlab = "PC1", ylab = "PC3")
+```
+
+It's now time to plot our results using ggplot2. First, we need to convert our data to a dataframe, including the diagnosis, then we can plot.
+
+```{r}
+df <- as.data.frame(wisc.pr$x)
+df$diagnosis <- diagnosis
+
+library(ggplot2)
+ggplot(df, aes(PC1,PC2,col=diagnosis)) +
+  geom_point()
+```
+
+#### Plotting Variance on a Scree Plot
+
+We can also visualize our variance against the number of PCs via a scree plot. First, we calculate the variance of each PC.
+
+```{r}
+pr.var <- wisc.pr$sdev^2
+head(pr.var)
+```
+
+Next, we can calculate the proportion of the total variance explained by each PC, then plot this for each PC.
+
+```{r}
+pve <- pr.var/sum(pr.var)
+plot(pve, xlab = "Principal Component", 
+     ylab = "Proportion of Variance Explained", 
+     ylim = c(0, 1), type = "o")
+```
+
+To find specific data, we can call the rotation portion of our results, finding that the PC1 component for the variable "concave.points_mean" is -0.26. Going back to the summary of results, we can also see that a minimum of 5 PCs brings us to 80% variance.
+
+```{r}
+wisc.pr$rotation["concave.points_mean",1]
+summary(wisc.pr)
+sum(pve[1:5])
+```
+
+#### Heirarchical Clustering
+
+Now, let's perform some h-clusting on the data to see how that algorithm handles this data. First, we prepare the dataset by scaling it and finding distances. Then, we can find the `hclust()`.
+
+```{r}
+data.scaled <- scale(wisc.data)
+data.dist <- dist(data.scaled)
+wisc.hclust <- hclust(data.dist,method="complete")
+```
+
+Plotting the results, we find that the height where there are 4 clusters is at 19.
+
+```{r}
+plot(wisc.hclust)
+abline(h=19,col="red",lty=2)
+```
+
+Judging from the dendrogram, it may be worthwhile to cut the tree into 4 clusters. We can then use the `table()` function to compare against the diagnoses.
+
+```{r}
+wisc.hclust.clusters <- cutree(wisc.hclust,k=4)
+table(wisc.hclust.clusters,diagnosis)
+```
+
+Repeating this for different cluster counts from 2 to 10 shows that 4 is probably the best cluster vs diagnosis match in terms of ratios. Below is an example of one of these repeats.
+
+```{r}
+wisc.hclust.clusters8 <- cutree(wisc.hclust,k=8)
+table(wisc.hclust.clusters8,diagnosis)
+```
+
+We can also test this using the different h-clust methods available to see if any will fit better than the default `"complete"` method. Below is the code for the exploration of these alternative methods.
+
+```{r}
+wisc.hclust.s <- hclust(data.dist,method="single")
+wisc.hclust.s.clusters <- cutree(wisc.hclust.s,k=4)
+table(wisc.hclust.s.clusters,diagnosis)
+```
+
+```{r}
+wisc.hclust.a <- hclust(data.dist,method="average")
+wisc.hclust.a.clusters <- cutree(wisc.hclust.a,k=5)
+table(wisc.hclust.a.clusters,diagnosis)
+```
+
+```{r}
+wisc.hclust.w <- hclust(data.dist,method="ward.D2")
+wisc.hclust.w.clusters <- cutree(wisc.hclust.w,k=2)
+table(wisc.hclust.w.clusters,diagnosis)
+```
+
+Of these new methods, ward.D2 seems to be the best, but still is not as representative of the diagnoses as the complete method, when judging by the ratios of "inaccurate" vs "accurate" data points.
+
+#### Combining Methods
+
+With both PCA and h-clusting, we can combine these methods to obtain a potentially better result of grouping. To do this, we can take the results from our PCA and perform h-clusting on it.
+
+```{r}
+d <- dist(wisc.pr$x[,1:3])
+wisc.pr.hclust <- hclust(d,method="ward.D2")
+plot(wisc.pr.hclust)
+```
+
+With 2 groups clearly delineated, we can cut the tree into 2.
+
+```{r}
+grps <- cutree(wisc.pr.hclust,k=2)
+head(grps)
+```
+
+Finally, we can plot our PC1 vs PC2, colored by the groups found in our previous step.
+
+```{r}
+plot(wisc.pr$x[,1],wisc.pr$x[,2],col=grps)
+```
+
+To check against our expert diagnoses, we call the `table()` function.
+
+```{r}
+table(grps,diagnosis)
+```
+
+Examining our results, we find that this combination of methods obtained the most "accurate" groups according to the ratios. Comparing to the other methods of heirarchical clustering and PCA, a combination of the two produced the best results.
