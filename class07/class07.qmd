@@ -1,0 +1,148 @@
+---
+title: "Machine Learning and PCA"
+author: "Andy Hsu"
+format: pdf
+---
+
+# Clustering
+
+#### K-means Clustering
+
+We will start today's lab with clustering methods, K-means in particular. The main function for this in R is `kmeans()`.
+
+First, let's fabricate a data set with a known distribution.
+
+```{r}
+tmp <- c(rnorm(30,mean=3),rnorm(30,mean=-3))
+x <- cbind(x=tmp,y=rev(tmp))
+plot(x)
+```
+
+Based on the `plot()` returned by R, we should expect any clustering function to easily sort this set into 2 clusters.
+
+```{r}
+k <- kmeans(x,centers=2,nstart=20)
+k
+```
+
+Within the `kmeans()` function, the `centers=` argument tells the algorithm how many groups there should be in the group, and the `nstart=` argument tells the algorithm how many iterations to run. The function then returns the best result from all iterations, along with a dataset with information on the clusters.
+
+```{r}
+# Size of each cluster
+k$size
+# Membership of each point
+k$cluster
+# Center of each cluster
+k$centers
+```
+
+To visualize the results, I can plot using the following code, displaying where the clusters are and which points are in which cluster.
+
+```{r}
+plot(x,col=k$cluster,pch=16)
+```
+
+But what happens if we try to separate this dataset into 4 groups?
+
+```{r}
+j <- kmeans(x,centers=4,nstart=20)
+plot(x,col=j$cluster,pch=16)
+```
+
+#### Hierarchical Clustering
+
+As quick and easy as kmeans is, a huge drawback of the function is that `centers=` needs to be defined, which can lead to inaccurate categorization of your data and confirmation bias. H-clusting can circumvent this by not requiring a defined number of clusters and instead discerning the value itself.
+
+The `hclust()` function performs hierarchical clustering on your given dataset, and requires some more setup in comparison to `kmeans()`. First, it needs an input of a distance matrix, which can be done with the `dist()` function.
+
+```{r}
+hc <- hclust(dist(x))
+plot(hc)
+```
+
+To find the clusters from this result, we can cut the tree at a certain height, splitting the data below into groups.
+
+```{r}
+plot(hc)
+abline(h=8,col="red")
+grps <- cutree(hc,h=8)
+grps
+```
+
+Plotting again by clusters, we can use this code.
+
+```{r}
+plot(x,col=grps)
+```
+
+# Principal Component Analysis (PCA)
+
+#### PCA of UK Food Data
+
+PCA is a technique we can use to make sense of datasets with many dimensions. It works by creating primary components, aiming to minimize variance on most axes and maximizing variance on 1.
+
+First, let's try conventional data analysis methods on this 17-dimension set.
+
+```{r}
+url <- "https://tinyurl.com/UK-foods"
+x <- read.csv(url)
+```
+
+First, we can find the dimensions of the dataset and look at the first couple lines of data.
+
+```{r}
+dim(x)
+head(x)
+```
+
+Next, we can fix the row names and make them proper rownames.
+
+```{r}
+x <- read.csv(url, row.names=1)
+head(x)
+```
+
+This method of using `read.csv()` is more robust, as it avoids trimming another column accidentally if the code is run again.
+
+Plotting the data as a bar plot, we see a jumble of bars that is hard to interpret.
+
+```{r}
+barplot(as.matrix(x), beside=F, col=rainbow(nrow(x)))
+```
+
+Similarly, a pairwise plot with all country comparisons is not very useful, but it can help in displaying how similar countries are, judging by how close a set is to a diagonal line.
+
+```{r}
+pairs(x, col=rainbow(17), pch=16)
+```
+
+From this data, we can tell that N. Ireland is quite different from the rest of the countries.
+
+We can do better, though. Let's use PCA to interpret our data. The main function to use for PCA is `prcomp()`.
+
+```{r}
+# Note that we transpose the data first to get the right variables on x and y.
+pca <- prcomp(t(x))
+summary(pca)
+```
+
+To plot PC1 vs PC2 and visualize our results, we can write this code.
+
+```{r}
+plot(pca$x[,1], pca$x[,2], xlab="PC1", ylab="PC2", xlim=c(-270,500))
+text(pca$x[,1], pca$x[,2], colnames(x), col=c("orange","red","blue","darkgreen"))
+```
+
+The "loadings" tell us how much the original variables (i.e. food values) contribute to our new variables (i.e. PCs). We can plot these values to a biplot to show the influence of each value.
+
+```{r}
+par(mar=c(10, 3, 2.5, 0))
+barplot(pca$rotation[,1], las=2, main="PC1 Loading Values")
+```
+
+```{r}
+par(mar=c(10, 3, 2.5, 0))
+barplot(pca$rotation[,2], las=2, main="PC2 Loading Values")
+```
+
+And those were some of the basics of using PCA to demystify datasets with a high number of dimensions.
