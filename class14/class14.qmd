@@ -1,0 +1,241 @@
+---
+title: "Pathway Analysis from RNA-Seq Results"
+author: "Andy Hsu"
+format: pdf
+---
+
+## Data Import
+
+Let's start by importing our files and converting them to R-friendly formats.
+
+```{r}
+#| message: false
+library(DESeq2)
+
+metaFile <- "GSE37704_metadata.csv"
+countFile <- "GSE37704_featurecounts.csv"
+
+colData = read.csv(metaFile, row.names=1)
+
+countData = read.csv(countFile, row.names=1)
+```
+
+We should remove the first column from the countData set so it lines up with the colData set.
+
+```{r}
+countData <- as.matrix(countData[,-1])
+head(countData)
+```
+
+Let's also remove all entries of exclusively 0 values.
+
+```{r}
+countData = countData[!(rowSums(countData)==0), ]
+head(countData)
+```
+
+We now have an appropriate dataset prepared for DESeq.
+
+## DESeq Setup and Analysis
+
+To perform our DESeq, remember that we need a special type of dataset. Once written, we can run the DESeq.
+
+```{r}
+dds = DESeqDataSetFromMatrix(countData=countData,
+                             colData=colData,
+                             design=~condition)
+dds = DESeq(dds)
+dds
+```
+
+Let's also get the results for the HoxA1 knockdown versus control siRNA.
+
+```{r}
+res = results(dds, contrast=c("condition", "hoxa1_kd", "control_sirna"))
+summary(res)
+```
+
+## Volcano Plot
+
+Let's now make a volcano plot of our results.
+
+```{r}
+plot( res$log2FoldChange, -log(res$padj) )
+```
+
+Let's not forget the color coding and ablines.
+
+```{r}
+mycols <- rep("gray", nrow(res) )
+mycols[ abs(res$log2FoldChange) > 2 ] <- "red"
+
+inds <- (res$padj < 0.05) & (abs(res$log2FoldChange) > 2 )
+mycols[ inds ] <- "blue"
+
+plot( res$log2FoldChange, -log(res$padj), col=mycols, xlab="Log2(FoldChange)", ylab="-Log(P-value)" )
+
+abline(v=c(-2,2), col="darkgray", lty=2)
+abline(h=-log(0.05), col="darkgray", lty=2)
+```
+
+## Gene Annotation
+
+Next, we can annotate our results with each entry's symbol, Entrez ID, and gene name.
+
+```{r}
+library("AnnotationDbi")
+library("org.Hs.eg.db")
+
+res$symbol = mapIds(org.Hs.eg.db,
+                    keys=row.names(res), 
+                    keytype="ENSEMBL",
+                    column="SYMBOL",
+                    multiVals="first")
+
+res$entrez = mapIds(org.Hs.eg.db,
+                    keys=row.names(res),
+                    keytype="ENSEMBL",
+                    column="ENTREZID",
+                    multiVals="first")
+
+res$name =   mapIds(org.Hs.eg.db,
+                    keys=row.names(res),
+                    keytype="ENSEMBL",
+                    column="GENENAME",
+                    multiVals="first")
+
+head(res, 4)
+```
+
+Let's also write our results to a csv file to save it.
+
+```{r}
+res = res[order(res$pvalue),]
+write.csv(res, file="deseq_results.csv")
+```
+
+## Pathway Analysis
+
+Now, let's use the **gage** package to perform pathway analysis and the **pathviewer** package to visualize our results.
+
+```{r}
+#| message: false
+library(pathview)
+library(gage)
+library(gageData)
+```
+
+Let's first load the appropriate datasets containing pathways and associated genes, filtering for just signaling and metabolic pathways.
+
+```{r}
+data(kegg.sets.hs)
+data(sigmet.idx.hs)
+
+kegg.sets.hs = kegg.sets.hs[sigmet.idx.hs]
+```
+
+Now, we will prepare a vector of fold changes for inputs for the `gage()` function.
+
+```{r}
+foldchanges = res$log2FoldChange
+names(foldchanges) = res$entrez
+head(foldchanges)
+```
+
+Let's run the gage analysis now.
+
+```{r}
+keggres = gage(foldchanges, gsets=kegg.sets.hs)
+head(keggres$less)
+```
+
+Finally, let's examine the first entry, the Cell Cycle pathway, using pathview.
+
+```{r}
+#| message: false
+pathview(gene.data=foldchanges, pathway.id="hsa04110")
+```
+
+The resulting image is displayed below.
+
+![](hsa04110.pathview.png)
+
+Let's repeat this process a little for the top 5 upregulated pathways.
+
+```{r}
+#| message: false
+keggrespathways <- rownames(keggres$greater)[1:5]
+keggrespathways
+keggresids = substr(keggrespathways, start=1, stop=8)
+pathview(gene.data=foldchanges, pathway.id=keggresids, species="hsa")
+```
+
+Here are the 5 resulting plots:
+
+![](hsa04640.pathview.png)
+
+![](hsa04630.pathview.png)
+
+![](hsa04640.pathview.png)
+
+![](hsa00140.pathview.png)
+
+![](hsa04142.pathview.png)
+
+![](hsa04330.pathview.png)
+
+And again repeat for the top 5 downregulated pathways.
+
+```{r}
+#| message: false
+keggrespathways1 <- rownames(keggres$less)[2:5]
+keggrespathways1
+keggresids1 = substr(keggrespathways1, start=1, stop=8)
+pathview(gene.data=foldchanges, pathway.id=keggresids1, species="hsa")
+```
+
+Here are the 5 resulting plots, with the top result (hsa04110 Cell Cycle) omitted from earlier.
+
+![](hsa03030.pathview.png)
+
+![](hsa03013.pathview.png)
+
+![](hsa03440.pathview.png)
+
+![](hsa04114.pathview.png)
+
+## Gene Ontology Alternative
+
+As an alternative to KEGG, we can use a GO (Gene Ontology) pathway set. An example is shown below.
+
+```{r}
+data(go.sets.hs)
+data(go.subs.hs)
+
+gobpsets = go.sets.hs[go.subs.hs$BP]
+gobpres = gage(foldchanges, gsets=gobpsets, same.dir=TRUE)
+
+print("$greater")
+head(gobpres$greater)
+print("$less")
+head(gobpres$less)
+```
+
+## Reactome Analysis Alternative
+
+Similarly, the Reactome database is another alternative method of analysis that can be used. Below is an example.
+
+```{r}
+sig_genes <- res[res$padj <= 0.05 & !is.na(res$padj), "symbol"]
+print(paste("Total number of significant genes:", length(sig_genes)))
+```
+
+```{r}
+write.table(sig_genes, file="significant_genes.txt", row.names=FALSE, col.names=FALSE, quote=FALSE)
+```
+
+Taking this file and uploading it to the Reactome website <https://reactome.org/PathwayBrowser/#TOOL=AT>, we can find a list of pathways similar to the previous 2 explored methods.
+
+Interestingly, the pathway with the lowest Entities p-value is the Cell Cycle pathway, matching the other methods, but the other pathways mentioned such as the mitotic spindle checkpoint or kinetichore signal amplification aren't seen in the others. This difference in results could be due to Reactome looking at biological molecules generally in relation to pathways rather than exclusively genes.
+
+And with that, that's all for this pathway analysis of RNA-Seq data using multiple methods.
