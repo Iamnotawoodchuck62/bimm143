@@ -1,0 +1,180 @@
+---
+title: "Pertussis Mini-Project"
+author: "Andy Hsu"
+format: pdf
+---
+
+Pertussis is a bacterial infection that causes closing of the airways and a severe cough. This mini-project will examine some of the data surrounding this disease which has recently made a resurgence.
+
+# Cases by Year
+
+We can visit [this](https://www.cdc.gov/pertussis/surv-reporting/cases-by-year.html) link to find data on yearly infection rates.
+
+```{r}
+#| echo=FALSE
+
+cdc <- data.frame( year = c(1922L,1923L,1924L,1925L,
+                                          1926L,1927L,1928L,1929L,1930L,1931L,
+                                          1932L,1933L,1934L,1935L,1936L,
+                                          1937L,1938L,1939L,1940L,1941L,1942L,
+                                          1943L,1944L,1945L,1946L,1947L,
+                                          1948L,1949L,1950L,1951L,1952L,
+                                          1953L,1954L,1955L,1956L,1957L,1958L,
+                                          1959L,1960L,1961L,1962L,1963L,
+                                          1964L,1965L,1966L,1967L,1968L,1969L,
+                                          1970L,1971L,1972L,1973L,1974L,
+                                          1975L,1976L,1977L,1978L,1979L,1980L,
+                                          1981L,1982L,1983L,1984L,1985L,
+                                          1986L,1987L,1988L,1989L,1990L,
+                                          1991L,1992L,1993L,1994L,1995L,1996L,
+                                          1997L,1998L,1999L,2000L,2001L,
+                                          2002L,2003L,2004L,2005L,2006L,2007L,
+                                          2008L,2009L,2010L,2011L,2012L,
+                                          2013L,2014L,2015L,2016L,2017L,2018L,
+2019L,2020L,2021L),
+cases = c(107473,164191,165418,152003,
+                                          202210,181411,161799,197371,
+                                          166914,172559,215343,179135,265269,
+                                          180518,147237,214652,227319,103188,
+                                          183866,222202,191383,191890,109873,
+                                          133792,109860,156517,74715,69479,
+                                          120718,68687,45030,37129,60886,
+                                          62786,31732,28295,32148,40005,
+                                          14809,11468,17749,17135,13005,6799,
+                                          7717,9718,4810,3285,4249,3036,
+                                          3287,1759,2402,1738,1010,2177,2063,
+                                          1623,1730,1248,1895,2463,2276,
+                                          3589,4195,2823,3450,4157,4570,
+                                          2719,4083,6586,4617,5137,7796,6564,
+                                          7405,7298,7867,7580,9771,11647,
+                                          25827,25616,15632,10454,13278,
+                                          16858,27550,18719,48277,28639,32971,
+                                          20762,17972,18975,15609,18617,
+6124,2116) )
+```
+
+Now, let's plot the cases by years via **ggplot2**.
+
+```{r}
+library(ggplot2)
+
+cases <- ggplot(cdc, aes(year,cases)) +
+  geom_point(col="black") +
+  geom_line(col="black")
+cases
+```
+
+Major milestones in the pertussis vaccine timeline are the introduction of the wP vaccine in 1946 and the switch to the aP vaccine in 1996. Let's add these points to the plot to view their effects. While we're at it, we can also include the Covid-19 pandemic in 2020.
+
+```{r}
+cases +
+  geom_vline(xintercept=1946,linetype="dashed",col="blue") +
+  geom_vline(xintercept=1996,linetype="dashed",col="red") +
+  geom_vline(xintercept=2020,linetype="dashed",col="green")
+```
+
+It appears from this graph that after the switch to the aP vaccine, a large rise in cases was seen, possibly due to the aP vaccine being much less effective than the wP.
+
+# CMI-PB Data
+
+The CMI-PB project aims to solve this problem by studying the long-term immune effects of individuals taken wP or aP. This data is documented and available on their site [here](https://www.cmi-pb.org).
+
+Notice that the data stored on this site is in the JSON file format. To read this data, we will use the package **jsonlite**.
+
+```{r}
+#| message: false
+library(jsonlite)
+
+subject <- read_json("https://www.cmi-pb.org/api/subject", simplifyVector=T)
+specimen <- read_json("http://cmi-pb.org/api/specimen", simplifyVector=T)
+titer <- read_json("http://cmi-pb.org/api/v4/plasma_ab_titer", simplifyVector=T)
+```
+
+Taking a quick look at the data, we can see some distributions of subject demographics. Interestingly, there is a disproportionally large sample of Asians, Caucasians, and females, which is perhaps not very representative of the overall US demographic. 
+
+```{r}
+table(subject$infancy_vac)
+table(subject$biological_sex)
+table(subject$race,subject$biological_sex)
+```
+
+Another aspect of this data that we can examine is the age of subjects, having a correlation with immune response. Using the **lubridate** package, we can work with days extremely easily.
+
+```{r}
+#| message: false
+library(lubridate)
+
+today()
+mdy("11-28-2001")
+today() - mdy("11-28-2001")
+time_length( today() - mdy("11-28-2001"), "years" )
+```
+
+Using these functions, we can calculate the average ages for wP and aP individuals, and see that the difference is
+
+```{r}
+subject$age <- time_length( today() - ymd( subject$year_of_birth ), "years" )
+mean( subject$age[subject$infancy_vac=="aP"] )
+mean( subject$age[subject$infancy_vac=="wP"] )
+```
+
+Now, let's plot a histogram of the age distribution.
+
+```{r}
+ggplot(subject, aes(age,fill=as.factor(infancy_vac))) +
+  geom_histogram(show.legend=F) +
+  facet_wrap(vars(infancy_vac),nrow=2) +
+  xlab("Age")
+```
+
+These graphs still need to be linked together by `subject_id`, which we can do with the `full_join()` function from the **dplyr** package.
+
+```{r}
+library(dplyr)
+
+joined <- inner_join(subject,specimen)
+```
+
+Finally, let's join titer data to the previously joined data frame.
+
+```{r}
+datafull <- inner_join(joined,titer)
+```
+
+By tabling the isotypes documented in this full dataset, we can see the distributions of antibodies observed by this study.
+
+```{r}
+table(datafull$isotype)
+```
+
+We can focus on one of these, IgG, and filter a new data frame.
+
+```{r}
+igg <- datafull %>% filter(isotype=="IgG")
+```
+
+Next, we can graph a box plot of these IgG values by MFI_normalised.
+
+```{r}
+ggplot(igg, aes(MFI_normalised,antigen)) +
+  geom_boxplot()
+```
+
+We can also separate the two vaccine types to compare them.
+
+```{r}
+ggplot(igg, aes(MFI_normalised,antigen,col=infancy_vac)) +
+  geom_boxplot()
+```
+
+Let's plot one last graph focusing on IgG to pertussis toxin (PT) antigen in the 2021 dataset.
+
+```{r}
+igg.pt <- igg %>% filter(antigen=="PT", dataset=="2021_dataset")
+
+ggplot(igg.pt, aes(planned_day_relative_to_boost, MFI_normalised, col=infancy_vac, group=subject_id)) +
+  geom_point() +
+  geom_line()
+```
+
+And that's it for this exploration of pertussis cases and the CMI-PB database.
