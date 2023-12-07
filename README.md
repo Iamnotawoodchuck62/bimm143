@@ -4,7 +4,7 @@ Projects from the Bioinformatics Lab at UC San Diego ([FA23](https://bioboot.git
 
 Class 4: [Bioinformatics Data Analysis with R](https://github.com/Iamnotawoodchuck62/bimm143/blob/main/class04/class04.pdf)
 
-Class 5: [Data exploration and visualization in R](https://github.com/Iamnotawoodchuck62/bimm143/blob/main/class05/class05.html)
+Class 5: [Data exploration and visualization in R](https://github.com/Iamnotawoodchuck62/bimm143/blob/main/class05/class05.md)
 
 Class 6: [R functions and R packages from CRAN and BioConductor](https://github.com/Iamnotawoodchuck62/bimm143/blob/main/class06/class06pdf.pdf)
 
