@@ -21,3 +21,5 @@ Class 11: [Structural Bioinformatics and AlphaFold2](https://github.com/Iamnotaw
 Class 13: [Transcriptomics and the analysis of RNA-Seq data](https://github.com/Iamnotawoodchuck62/bimm143/blob/main/class13/class13.pdf)
 
 Class 14: [RNA-Seq Analysis Mini-Project](https://github.com/Iamnotawoodchuck62/bimm143/blob/main/class14/class14.pdf)
+
+Class 19: [Investigating Pertussis Resurgence](https://github.com/Iamnotawoodchuck62/bimm143/blob/main/class19/class19.pdf)
